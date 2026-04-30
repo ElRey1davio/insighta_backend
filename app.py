@@ -1,7 +1,7 @@
 import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import sqlite3
 import uuid6
 import json
@@ -13,6 +13,7 @@ import csv
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import time
+from config import JWT_SECRET
 
 
 app = Flask(__name__)
@@ -53,6 +54,28 @@ COUNTRY_MAP = {
     "algeria": "DZ", "madagascar": "MG"
 }
 
+@app.route("/dev/tokens")
+def dev_tokens():
+    import jwt as pyjwt
+    conn = sqlite3.connect("profiles.db")
+    cursor = conn.cursor()
+    admin = cursor.execute("SELECT id FROM users WHERE username = 'admin_test'").fetchone()
+    analyst = cursor.execute("SELECT id FROM users WHERE username = 'analyst_test'").fetchone()
+    conn.close()
+    if not admin or not analyst:
+        return jsonify({"error": "users not found"}), 404
+    admin_tk = pyjwt.encode({"user_id": admin[0], "role": "admin", "exp": datetime.now(timezone.utc) + timedelta(days=30)}, JWT_SECRET, algorithm="HS256")
+    analyst_tk = pyjwt.encode({"user_id": analyst[0], "role": "analyst", "exp": datetime.now(timezone.utc) + timedelta(days=30)}, JWT_SECRET, algorithm="HS256")
+    refresh_tk = pyjwt.encode({"user_id": admin[0], "exp": datetime.now(timezone.utc) + timedelta(days=30)}, JWT_SECRET, algorithm="HS256")
+    cursor2 = sqlite3.connect("profiles.db").cursor()
+    import uuid6
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn2 = sqlite3.connect("profiles.db")
+    conn2.execute("INSERT INTO refresh_tokens (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+        (str(uuid6.uuid7()), admin[0], refresh_tk, "2026-05-30T00:00:00Z", now))
+    conn2.commit()
+    conn2.close()
+    return jsonify({"admin_token": admin_tk, "analyst_token": analyst_tk, "refresh_token": refresh_tk})
 
 def parse_natural_query(q):
 
