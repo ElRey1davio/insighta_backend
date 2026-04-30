@@ -7,6 +7,7 @@ import sqlite3
 import uuid6
 from datetime import datetime, timezone, timedelta
 import jwt
+import os
 
 
 
@@ -16,8 +17,10 @@ auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route("/auth/github", methods = ["GET"])
 def github_login():
+    redirect_to = request.args.get('redirect_to', '') 
     url = "https://github.com/login/oauth/authorize"
-    params = f"?client_id={GITHUB_CLIENT_ID}&redirect_uri=https://insightabackend-production-a89c.up.railway.app/auth/github/callback&scope=user:email"
+    callback_url = os.environ.get('BACKEND_URL', 'https://insightabackend-production-a89c.up.railway.app') + '/auth/github/callback'
+    params = f"?client_id={GITHUB_CLIENT_ID}&redirect_uri={callback_url}&scope=user:email&state={redirect_to}"
     full_url = url + params
     return redirect(full_url)
 
@@ -112,11 +115,20 @@ def github_callback():
     conn.commit()
     conn.close()
     
-    return jsonify({
-        "status": "success",
-        "access_token": access_token,
-        "refresh_token": refresh_token
-    }), 200
+    redirect_to = request.args.get('state', '')
+    
+    if redirect_to == 'web':
+        WEB_URL = os.environ.get('WEB_URL', 'http://localhost:8080')
+        return redirect(f"{WEB_URL}/auth/callback?token={access_token}&refresh={refresh_token}&username={user_profile['login']}")
+    elif redirect_to == 'cli':
+        return redirect(f"http://localhost:8642/callback?token={access_token}&refresh={refresh_token}&username={user_profile['login']}")
+    else:
+        return jsonify({
+            "status": "success",
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "username": user_profile["login"]
+        }), 200
 
 
 @auth_bp.route("/auth/refresh", methods=["POST"])
