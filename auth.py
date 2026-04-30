@@ -17,7 +17,7 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.route("/auth/github", methods = ["GET"])
 def github_login():
     url = "https://github.com/login/oauth/authorize"
-    params = f"?client_id={GITHUB_CLIENT_ID}&redirect_uri=http://localhost:5000/auth/github/callback&scope=user:email"
+    params = f"?client_id={GITHUB_CLIENT_ID}&redirect_uri=https://insightabackend-production-a89c.up.railway.app/auth/github/callback&scope=user:email"
     full_url = url + params
     return redirect(full_url)
 
