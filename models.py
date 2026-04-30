@@ -66,15 +66,14 @@ def seed_db():
 ''', (individual_profile_id, profile["name"].lower(), profile["gender"], profile["gender_probability"], profile["age"], profile["age_group"], profile["country_id"], profile["country_name"], profile["country_probability"], profile_created_at))
     
     
-    # Seed test users
-    admin_id = str(uuid6.uuid7())
-    analyst_id = str(uuid6.uuid7())
+   
+   # Seed test users (fixed UUIDs so tokens survive restarts)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     c.execute("INSERT OR IGNORE INTO users (id, github_id, username, email, avatar_url, role, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (admin_id, "000001", "admin_test", "admin@test.com", "", "admin", 1, now))
+        ("019ddd00-0000-7000-8000-000000000001", "000001", "admin_test", "admin@test.com", "", "admin", 1, now))
     c.execute("INSERT OR IGNORE INTO users (id, github_id, username, email, avatar_url, role, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (analyst_id, "000002", "analyst_test", "analyst@test.com", "", "analyst", 1, now))
-    
+        ("019ddd00-0000-7000-8000-000000000002", "000002", "analyst_test", "analyst@test.com", "", "analyst", 1, now))
+   
     conn.commit()
     conn.close() 
 seed_db()    
