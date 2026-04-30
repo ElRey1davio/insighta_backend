@@ -547,6 +547,38 @@ def delete_profile(id):
     conn.close()
     return '', 204
 
+
+# ========== USER MANAGEMENT ==========
+
+@app.route("/api/users/me", methods=["GET"])
+@require_auth
+@require_version
+def get_current_user():
+    conn = sqlite3.connect("profiles.db")
+    c = conn.cursor()
+    c.execute("SELECT id, github_id, username, email, avatar_url, role, is_active, last_login_at, created_at FROM users WHERE id = ?", (request.user_id,))
+    user = c.fetchone()
+    conn.close()
+    
+    if not user:
+        return jsonify({"status": "error", "message": "User not found"}), 404
+    
+    return jsonify({
+        "status": "success",
+        "data": {
+            "id": user[0],
+            "github_id": user[1],
+            "username": user[2],
+            "email": user[3],
+            "avatar_url": user[4],
+            "role": user[5],
+            "is_active": bool(user[6]),
+            "last_login_at": user[7],
+            "created_at": user[8]
+        }
+    }), 200
+
+
 # Helper to format DB rows
 def format_row(row):
     return {
@@ -561,11 +593,3 @@ def format_row(row):
     
 if __name__ == "__main__":
     app.run(debug=True)
-    
-   
-
-
-
-
-
-

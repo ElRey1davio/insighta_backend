@@ -28,10 +28,14 @@ def github_login():
 def github_callback():
     
     code = request.args.get('code')
+    state = request.args.get('state')
+    
+    # Reject missing code
+    if not code:
+        return jsonify({"status": "error", "message": "Missing authorization code"}), 400
     
     # Handle grader test_code
     if code == "test_code":
-        state = request.args.get('state')
         code_verifier = request.args.get('code_verifier')
         
         
@@ -54,18 +58,38 @@ def github_callback():
         return jsonify({"status": "success", "access_token": access_token_jwt, "refresh_token": refresh_token, "username": "admin_test"}), 200
     
     
-    token_response = requests.post("https://github.com/login/oauth/access_token", json ={
-        "client_id": GITHUB_CLIENT_ID,
-        "client_secret": GITHUB_CLIENT_SECRET,
-        'code':code},
-        headers={"Accept": "application/json"}
-)
-    access_token = token_response.json().get("access_token")
-    response = requests.get("https://api.github.com/user", 
-                            headers ={"Authorization": f"Bearer {access_token}"} )
-    user_profile = response.json()
+    # Exchange code with GitHub
+    try:
+        token_response = requests.post("https://github.com/login/oauth/access_token", json={
+            "client_id": GITHUB_CLIENT_ID,
+            "client_secret": GITHUB_CLIENT_SECRET,
+            'code': code},
+            headers={"Accept": "application/json"},
+            timeout=10
+        )
+        token_data = token_response.json()
+        
+        if "error" in token_data:
+            return jsonify({"status": "error", "message": "Invalid authorization code"}), 401
+        
+        access_token = token_data.get("access_token")
+        if not access_token:
+            return jsonify({"status": "error", "message": "Invalid authorization code"}), 401
+            
+    except Exception:
+        return jsonify({"status": "error", "message": "Failed to exchange code with GitHub"}), 502
     
-    conn= sqlite3.connect("profiles.db")
+    try:
+        response = requests.get("https://api.github.com/user", 
+                                headers={"Authorization": f"Bearer {access_token}"},
+                                timeout=10)
+        if response.status_code != 200:
+            return jsonify({"status": "error", "message": "Failed to fetch user from GitHub"}), 502
+        user_profile = response.json()
+    except Exception:
+        return jsonify({"status": "error", "message": "Failed to fetch user from GitHub"}), 502
+    
+    conn = sqlite3.connect("profiles.db")
     cursor = conn.cursor()
     
     github_id = str(user_profile["id"])
@@ -133,11 +157,26 @@ def github_callback():
 
 @auth_bp.route("/auth/refresh", methods=["POST"])
 def refresh():
-    data = request.get_json()
+    data = request.get_json(silent=True)
     if not data or "refresh_token" not in data:
         return jsonify({"status": "error", "message": "Refresh token required"}), 400
     
     old_token = data["refresh_token"]
+    
+    # Decode first to check expiry before DB lookup
+    try:
+        payload = jwt.decode(old_token, JWT_SECRET, algorithms=["HS256"])
+        user_id = payload["user_id"]
+    except jwt.ExpiredSignatureError:
+        # Clean up expired token from DB if it exists
+        conn = sqlite3.connect("profiles.db")
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM refresh_tokens WHERE token = ?", (old_token,))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "error", "message": "Refresh token expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"status": "error", "message": "Invalid refresh token"}), 401
     
     conn = sqlite3.connect("profiles.db")
     cursor = conn.cursor()
@@ -150,21 +189,15 @@ def refresh():
         conn.close()
         return jsonify({"status": "error", "message": "Invalid refresh token"}), 401
     
-    # Delete the old refresh token (invalidate it)
+    # Delete the old refresh token (rotation)
     cursor.execute("DELETE FROM refresh_tokens WHERE token = ?", (old_token,))
-    
-    # Decode the old token to get user_id
-    try:
-        payload = jwt.decode(old_token, JWT_SECRET, algorithms=["HS256"])
-        user_id = payload["user_id"]
-    except jwt.ExpiredSignatureError:
-        conn.commit()
-        conn.close()
-        return jsonify({"status": "error", "message": "Refresh token expired"}), 401
     
     # Get user role
     cursor.execute("SELECT role FROM users WHERE id = ?", (user_id,))
     user = cursor.fetchone()
+    if not user:
+        conn.close()
+        return jsonify({"status": "error", "message": "User not found"}), 401
     user_role = user[0]
     
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -199,7 +232,7 @@ def refresh():
     
 @auth_bp.route("/auth/logout", methods=["POST"])
 def logout():
-    data = request.get_json()
+    data = request.get_json(silent=True)
     if not data or "refresh_token" not in data:
         return jsonify({"status": "error", "message": "Refresh token required"}), 400
     
@@ -209,4 +242,4 @@ def logout():
     conn.commit()
     conn.close()
     
-    return jsonify({"status": "success", "message": "Logged out"}), 200    
+    return jsonify({"status": "success", "message": "Logged out"}), 200
