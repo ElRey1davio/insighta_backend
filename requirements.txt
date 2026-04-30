@@ -1,0 +1,8 @@
+flask
+flask-cors
+requests
+uuid6
+gunicorn
+python-dotenv
+PyJWT
+Flask-Limiter
