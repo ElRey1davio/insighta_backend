@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Install linter
+        run: pip install flake8
+      - name: Run linter
+        run: flake8 --max-line-length=150 --ignore=E501,W503,E302,E303,W291,W292,W293,E261,E262,E225,E231,E241,E251,E271,E272,E303 .
